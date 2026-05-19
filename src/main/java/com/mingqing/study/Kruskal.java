@@ -1,4 +1,6 @@
-package com.minging.study;
+package com.mingqing.study;
+
+import com.mingqing.partition.graph.UnionFind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,8 +26,8 @@ public class Kruskal {
         List<Edge> result = new ArrayList<>();
 
         for (Edge edge : sortedEdges) {
-            int u = edge.getU();
-            int v = edge.getV();
+            int u = edge.u();
+            int v = edge.v();
 
             if (!uf.connected(u, v))  {
                 uf.union(u, v);

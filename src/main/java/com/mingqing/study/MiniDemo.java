@@ -1,4 +1,4 @@
-package com.minging.study;
+package com.mingqing.study;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,7 +40,7 @@ public class MiniDemo {
         System.out.println("节点数: " + n);
         System.out.println("边数:   " + edges.size());
         for (Edge e : edges) {
-            System.out.println("  " + e.getU() + " -- " + e.getV() + "  权重=" + e.getWeight());
+            System.out.println("  " + e.u() + " -- " + e.v() + "  权重=" + e.weight());
         }
 
         // ── Step 2: 求最大生成树 ─────────────────────────────────────
@@ -49,7 +49,7 @@ public class MiniDemo {
         System.out.println("\n=== Step 2: 最大生成树（Kruskal）===");
         System.out.println("树边数: " + treeEdges.size() + "（应为 " + (n - 1) + "）");
         for (Edge e : treeEdges) {
-            System.out.println("  " + e.getU() + " -- " + e.getV() + "  权重=" + e.getWeight());
+            System.out.println("  " + e.u() + " -- " + e.v() + "  权重=" + e.weight());
         }
         System.out.println("被丢弃的边数: " + (edges.size() - treeEdges.size()));
 
@@ -118,8 +118,8 @@ public class MiniDemo {
         }
 
         for (Edge e : treeEdges) {
-            int u = e.getU();
-            int v = e.getV();
+            int u = e.u();
+            int v = e.v();
             if (u >= n || v >= n) {
                 throw new IllegalArgumentException("invalid edge");
             }

@@ -1,4 +1,4 @@
-package com.minging.study;
+package com.mingqing.study;
 
 import java.util.*;
 

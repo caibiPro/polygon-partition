@@ -1,7 +1,6 @@
-package com.minging.study;
+package com.mingqing.study;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 全流程演示：从原始图 → 最大生成树 → 递归切分 → 分区结果
@@ -223,9 +222,9 @@ public class PipelineDemo {
         Map<Long, Integer> edgeMap = new HashMap<>();
         int maxWeight = 0;
         for (Edge edge : edges) {
-            int a = Math.min(edge.getU(), edge.getV());
-            int b = Math.max(edge.getU(), edge.getV());
-            int w = edge.getWeight();
+            int a = Math.min(edge.u(), edge.v());
+            int b = Math.max(edge.u(), edge.v());
+            int w = edge.weight();
             edgeMap.put((long) a << 32 | b, w);
             maxWeight = Math.max(maxWeight, w);
         }
