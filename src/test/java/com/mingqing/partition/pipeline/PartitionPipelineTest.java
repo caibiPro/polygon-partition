@@ -1,6 +1,8 @@
 package com.mingqing.partition.pipeline;
 
-import com.mingqing.partition.cut.PartitionCutter;
+import com.mingqing.partition.cut.algorithm.GlobalWeakestEdgeAlgorithm;
+import com.mingqing.partition.cut.algorithm.TreePartitionAlgorithm;
+import com.mingqing.partition.cut.model.PartitionContext;
 import com.mingqing.partition.geometry.GeometryTestSupport;
 import com.mingqing.partition.graph.AdjacencyGraphBuilder;
 import com.mingqing.partition.graph.MaxSpanningTree;
@@ -43,7 +45,9 @@ class PartitionPipelineTest {
         List<WeightedEdge> mstEdges = MaxSpanningTree.compute(POLYGONS.size(), edges);
 
         // Step 3: 切掉 k-1 条最弱边，得到 k 个分组
-        List<List<Integer>> groups = PartitionCutter.cut(POLYGONS.size(), mstEdges, 2);
+        TreePartitionAlgorithm algorithm = new GlobalWeakestEdgeAlgorithm();
+        List<List<Integer>> groups = algorithm.partition(
+                POLYGONS.size(), mstEdges, new PartitionContext(0, 2));
 
         // Step 4: 断言
         assertThat(groups).hasSize(2);
