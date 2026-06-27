@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * SortSweepMerger 的规格 + 示例集。
@@ -96,5 +97,18 @@ class SortSweepMergerTest {
         List<List<Integer>> bins = merger.merge(List.of(new Cluster(List.of(7), 0, 0)), 5);
         assertThat(bins).hasSize(1);
         assertThat(bins.get(0)).containsExactly(7);
+    }
+
+    /**
+     * 契约：单个簇本身就超过 capacity 属于上游 bug（切分阶段本应先把它切小）。
+     * merger 不负责拆分（那是 cut 阶段的职责），而应 fail-fast 当场抛出，
+     * 而不是静默产出一个超容的包。
+     */
+    @Test
+    void clusterExceedsCapacity_throws() {
+        List<Cluster> clusters = List.of(new Cluster(List.of(1, 2, 3), 0, 0)); // size 3 > cap 2
+
+        assertThatThrownBy(() -> merger.merge(clusters, 2))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

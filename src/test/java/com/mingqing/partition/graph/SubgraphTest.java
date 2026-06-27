@@ -39,4 +39,26 @@ class SubgraphTest {
         List<WeightedEdge> parent = List.of(new WeightedEdge(0, 1, 1.0));
         assertThat(Subgraph.induce(List.of(0), parent)).isEmpty();
     }
+
+    /**
+     * 父邻接表（parent ID）：0↔1, 1↔2, 2↔3, 0↔2。
+     * 取子集 {1, 2, 3} → local: 1→0, 2→1, 3→2。
+     * 局部应只保留 0↔1（原 1↔2）和 1↔2（原 2↔3），跨界邻居被丢弃。
+     */
+    @Test
+    void induceAdjacency_keepsOnlyInternalNeighbors_andRelabels() {
+        List<List<Integer>> parentAdj = List.of(
+                List.of(1, 2),     // 0 ↔ 1, 2
+                List.of(0, 2),     // 1 ↔ 0, 2
+                List.of(0, 1, 3),  // 2 ↔ 0, 1, 3
+                List.of(2)         // 3 ↔ 2
+        );
+
+        List<List<Integer>> sub = Subgraph.induceAdjacency(List.of(1, 2, 3), parentAdj);
+
+        assertThat(sub).hasSize(3);
+        assertThat(sub.get(0)).containsExactlyInAnyOrder(1);    // local 0 (parent 1) ↔ local 1 (parent 2)
+        assertThat(sub.get(1)).containsExactlyInAnyOrder(0, 2); // local 1 (parent 2) ↔ local 0, local 2
+        assertThat(sub.get(2)).containsExactlyInAnyOrder(1);    // local 2 (parent 3) ↔ local 1 (parent 2)
+    }
 }

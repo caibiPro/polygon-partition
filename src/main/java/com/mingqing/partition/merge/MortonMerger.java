@@ -20,6 +20,13 @@ public class MortonMerger implements SpatialMerger {
     @Override
     public List<List<Integer>> merge(List<Cluster> clusters, int capacity) {
         if (clusters.isEmpty()) return List.of();
+        // 契约（见 SpatialMerger）：单簇本应已 ≤ capacity；超了即上游 bug，fail-fast
+        for (Cluster c : clusters) {
+            if (c.size() > capacity) {
+                throw new IllegalArgumentException(
+                        "cluster size " + c.size() + " exceeds capacity " + capacity);
+            }
+        }
         List<Cluster> ordered = sortByLocality(clusters);
         return sequentialPack(ordered, capacity);
     }
@@ -70,13 +77,13 @@ public class MortonMerger implements SpatialMerger {
         return (int) ((value - min) / span * 0xFFFF);
     }
 
-    /** 交错 x、y 的低 16 位生成 32-bit Morton 码。 */
-    private static long morton(int x, int y) {
+    /** 交错 x、y 的低 16 位生成 32-bit Morton 码。包级可见以便探索测试直接调用。 */
+    static long morton(int x, int y) {
         return spreadBits(x) | (spreadBits(y) << 1);
     }
 
-    /** 把 16-bit 值的每一位散开到偶数位（位间插 0）。 */
-    private static long spreadBits(int v) {
+    /** 把 16-bit 值的每一位散开到偶数位（位间插 0）。包级可见以便探索测试直接调用。 */
+    static long spreadBits(int v) {
         long x = v & 0xFFFFL;
         x = (x | (x << 8)) & 0x00FF00FFL;
         x = (x | (x << 4)) & 0x0F0F0F0FL;

@@ -5,9 +5,13 @@ import com.mingqing.partition.cut.model.PartitionContext;
 import com.mingqing.partition.domain.Plot;
 import com.mingqing.partition.graph.AdjacencyGraphBuilder;
 import com.mingqing.partition.graph.MaxSpanningTree;
+import com.mingqing.partition.graph.Subgraph;
 import com.mingqing.partition.graph.UnionFind;
 import com.mingqing.partition.graph.WeightedEdge;
+import com.mingqing.partition.merge.Cluster;
+import com.mingqing.partition.merge.SpatialMerger;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.Point;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,11 +31,13 @@ import java.util.Map;
 public class VillagePartitioner {
 
     private final TreePartitionAlgorithm algorithm;
+    private final SpatialMerger merger;
     private final int maxGroupSize;
 
-    public VillagePartitioner(TreePartitionAlgorithm algorithm, int maxGroupSize) {
+    public VillagePartitioner(TreePartitionAlgorithm algorithm, SpatialMerger merger, int maxGroupSize) {
         if (maxGroupSize <= 0) throw new IllegalArgumentException("maxGroupSize must be positive");
         this.algorithm = algorithm;
+        this.merger = merger;
         this.maxGroupSize = maxGroupSize;
     }
 
@@ -55,8 +61,8 @@ public class VillagePartitioner {
             }
         }
 
-        // 小组贪心合并至接近 maxGroupSize
-        List<List<Integer>> mergedGroups = mergeSmallGroups(rawGroups);
+        // 按地理邻近度合并小组至接近 maxGroupSize
+        List<List<Integer>> mergedGroups = mergeSmallGroups(rawGroups, geometries);
 
         // 全局下标 → Plot
         return mergedGroups.stream()
@@ -94,20 +100,10 @@ public class VillagePartitioner {
     private List<List<Integer>> partitionComponent(List<Integer> globalNodes, List<WeightedEdge> globalEdges) {
         int localN = globalNodes.size();
 
-        Map<Integer, Integer> globalToLocal = new LinkedHashMap<>((int) (localN / 0.75f) + 1);
-        for (int local = 0; local < localN; local++) {
-            globalToLocal.put(globalNodes.get(local), local);
-        }
+        // 阶段①：导出该分量的局部加权子图（global→local 重编号）
+        List<WeightedEdge> localEdges = Subgraph.induce(globalNodes, globalEdges);
 
-        List<WeightedEdge> localEdges = new ArrayList<>();
-        for (WeightedEdge e : globalEdges) {
-            Integer lu = globalToLocal.get(e.u());
-            Integer lv = globalToLocal.get(e.v());
-            if (lu != null && lv != null) {
-                localEdges.add(new WeightedEdge(lu, lv, e.weight()));
-            }
-        }
-
+        // 阶段②③：最大生成树 + 递归切分
         List<WeightedEdge> mst = MaxSpanningTree.compute(localN, localEdges);
         List<List<Integer>> localGroups =
                 algorithm.partition(localN, mst, new PartitionContext(maxGroupSize, 0));
@@ -125,13 +121,39 @@ public class VillagePartitioner {
     }
 
     /**
-     * 把过小的组贪心合并到接近 maxGroupSize 的任务包。
+     * 按地理邻近度把过小的组合并成接近 maxGroupSize 的任务包。
      * <p>
-     * 输入是切分后的所有原始组（全局下标），输出是合并后的组。
-     * 必须保持集合划分不变量：每个全局下标出现且仅出现一次。
+     * 关键：跨连通分量的组之间不共享边界，所以"聚合"的可操作含义是
+     * 「地理邻近」——把质心彼此靠近的小簇拼到同一个包，让外业人员
+     * 领到的包集中在一片区域，而不是散落全村。
+     * <p>
+     * 必须保持集合划分不变量：每个全局下标出现且仅出现一次；
+     * 且合并后每个包仍 ≤ maxGroupSize。
+     *
+     * @param groups     切分后的原始组（全局下标）
+     * @param geometries 全村几何（下标与 plots 对齐），用于计算质心距离
      */
-    private List<List<Integer>> mergeSmallGroups(List<List<Integer>> groups) {
-        // TODO(human)
-        return null;
+    private List<List<Integer>> mergeSmallGroups(List<List<Integer>> groups, List<Geometry> geometries) {
+        // 把每个组转成带代表点的 Cluster（这里是 GIS → 纯数值的边界）
+        List<Cluster> clusters = new ArrayList<>(groups.size());
+        for (List<Integer> group : groups) {
+            clusters.add(toCluster(group, geometries));
+        }
+        // 具体用哪种空间装箱策略由注入的 merger 决定（Morton / 单轴 / …）
+        return merger.merge(clusters, maxGroupSize);
+    }
+
+    /**
+     * 把一组地块打包成 {@link Cluster}：代表点取各成员质心坐标的算术平均
+     * （足够近似邻近度，无需昂贵的几何 union）。
+     */
+    private static Cluster toCluster(List<Integer> group, List<Geometry> geometries) {
+        double sumX = 0, sumY = 0;
+        for (int idx : group) {
+            Point c = geometries.get(idx).getCentroid();
+            sumX += c.getX();
+            sumY += c.getY();
+        }
+        return new Cluster(group, sumX / group.size(), sumY / group.size());
     }
 }

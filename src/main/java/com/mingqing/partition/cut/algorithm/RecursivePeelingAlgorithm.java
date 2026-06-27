@@ -3,6 +3,7 @@ package com.mingqing.partition.cut.algorithm;
 import com.mingqing.partition.cut.model.PartitionContext;
 import com.mingqing.partition.cut.TreeCutStrategy;
 import com.mingqing.partition.cut.model.TreeCutDecision;
+import com.mingqing.partition.graph.Subgraph;
 import com.mingqing.partition.graph.WeightedEdge;
 
 import java.util.*;
@@ -75,7 +76,7 @@ public class RecursivePeelingAlgorithm implements TreePartitionAlgorithm {
         int[] subtreeSize = new int[localN];
         int[] parentArray = new int[localN];
 
-        List<List<Integer>> localAdj = buildInducedSubgraph(globalNodes, globalAdj);
+        List<List<Integer>> localAdj = Subgraph.induceAdjacency(globalNodes, globalAdj);
 
         computeSubtreeSizes(0, localAdj, subtreeSize, parentArray);
         TreeCutDecision cut = cutStrategy.findBestCut(parentArray, subtreeSize, maxGroupSize);
@@ -117,42 +118,6 @@ public class RecursivePeelingAlgorithm implements TreePartitionAlgorithm {
             adj.get(e.v()).add(e.u());
         }
         return adj;
-    }
-
-    /**
-     * 提取导出子图 (Induced Subgraph) 并完成 Local ID 重排。
-     * <p>
-     * 遍历 globalNodes 中每个节点在全局邻接表中的邻居，
-     * 只保留也在 globalNodes 内的边，复杂度 O(V_local × D)。
-     *
-     * @param globalNodes 参与构建局部子图的 Global ID 集合
-     * @param globalAdj   全局邻接表（贯穿所有递归层共享）
-     * @return 基于 Local ID 构建的局部邻接表
-     */
-    static List<List<Integer>> buildInducedSubgraph(
-            List<Integer> globalNodes,
-            List<List<Integer>> globalAdj) {
-
-        int localN = globalNodes.size();
-        Set<Integer> nodeSet = new HashSet<>(globalNodes);
-
-        Map<Integer, Integer> globalToLocalId = new HashMap<>((int) (localN / 0.75f) + 1);
-        List<List<Integer>> localAdj = new ArrayList<>(localN);
-
-        for (int i = 0; i < localN; i++) {
-            globalToLocalId.put(globalNodes.get(i), i);
-            localAdj.add(new ArrayList<>());
-        }
-
-        for (int localU = 0; localU < localN; localU++) {
-            int globalU = globalNodes.get(localU);
-            for (int globalV : globalAdj.get(globalU)) {
-                if (nodeSet.contains(globalV)) {
-                    localAdj.get(localU).add(globalToLocalId.get(globalV));
-                }
-            }
-        }
-        return localAdj;
     }
 
     /**

@@ -3,6 +3,7 @@ package com.mingqing.partition.partitioner;
 import com.mingqing.partition.cut.TargetedPeelingStrategy;
 import com.mingqing.partition.cut.algorithm.RecursivePeelingAlgorithm;
 import com.mingqing.partition.domain.Plot;
+import com.mingqing.partition.merge.MortonMerger;
 import com.mingqing.partition.geometry.GeometryTestSupport;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Geometry;
@@ -17,7 +18,7 @@ class VillagePartitionerTest {
     private VillagePartitioner partitioner(int maxGroupSize) {
         RecursivePeelingAlgorithm algorithm =
                 new RecursivePeelingAlgorithm(new TargetedPeelingStrategy());
-        return new VillagePartitioner(algorithm, maxGroupSize);
+        return new VillagePartitioner(algorithm, new MortonMerger(), maxGroupSize);
     }
 
     /** 构造一行 n 个 10×10 方块，相邻共享边长 10，整体是一个连通分量。 */

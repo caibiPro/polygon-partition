@@ -2,9 +2,11 @@ package com.mingqing.partition.merge;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MortonMergerTest {
 
@@ -54,5 +56,36 @@ class MortonMergerTest {
     @Test
     void emptyInput_yieldsNoBins() {
         assertThat(merger.merge(List.of(), 3)).isEmpty();
+    }
+
+    /**
+     * 回归测试：守住 spreadBits/morton 用 64 位 long 的设计（对全局顺序敏感）。
+     * <p>
+     * 沿 y 轴排 6 个单点（x=0），量程被 quantize 拉满，使高 y 越过 bit15 边界。
+     * 正确的 long 版按 y 升序分组：点 0 与其空间邻居 1 同包、绝不与最远的 5 同包。
+     * 若 spreadBits 退回 32 位 int，高 y 的码翻成负数被甩到最前，点 0 会与点 5
+     * 错配——本测试随即失败。这正是之前 farApartBlobs（用 anySatisfy、对顺序不敏感）
+     * 抓不到的盲区。
+     */
+    @Test
+    void preservesYOrder_acrossSignBitBoundary() {
+        List<Cluster> clusters = new ArrayList<>();
+        for (int y = 0; y < 6; y++) {
+            clusters.add(new Cluster(List.of(y), 0, y)); // 成员 id = y，便于断言
+        }
+
+        List<List<Integer>> bins = merger.merge(clusters, 2);
+
+        List<Integer> binWith0 = bins.stream().filter(b -> b.contains(0)).findFirst().orElseThrow();
+        assertThat(binWith0).contains(1).doesNotContain(5);
+    }
+
+    /** 契约与 SortSweepMerger 一致：单簇超容即上游 bug，fail-fast。 */
+    @Test
+    void clusterExceedsCapacity_throws() {
+        List<Cluster> clusters = List.of(new Cluster(List.of(1, 2, 3), 0, 0)); // size 3 > cap 2
+
+        assertThatThrownBy(() -> merger.merge(clusters, 2))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
