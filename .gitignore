@@ -40,3 +40,4 @@ build/
 ### Local agent / assistant state ###
 .claude/
 .codex/
+.antigravitycli/
