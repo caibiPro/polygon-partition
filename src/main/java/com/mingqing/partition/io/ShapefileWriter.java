@@ -57,11 +57,48 @@ public class ShapefileWriter {
         if (packages == null) throw new IllegalArgumentException("packages must not be null");
 
         SimpleFeatureType type = buildType(crs);
+        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(type);
+        DefaultFeatureCollection features = new DefaultFeatureCollection();
+        for (int pkgId = 0; pkgId < packages.size(); pkgId++) {
+            addPackageFeatures(features, builder, packages.get(pkgId), pkgId);
+        }
+        writeCollection(outShp, type, features);
+    }
 
+    /**
+     * 每个任务包写出一个独立 Shapefile：{@code pkg_000.shp}、{@code pkg_001.shp}……
+     * 文件内保留该包的每个图斑（多 feature，各自边界）。外业人员一人领一个文件。
+     *
+     * @param outDir   输出目录（不存在会创建）
+     * @param packages 任务包列表，下标即文件编号
+     * @param crs      坐标参考系
+     * @throws IOException 任一文件写出失败时抛出
+     */
+    public static void writePerPackage(File outDir, List<List<Plot>> packages, CoordinateReferenceSystem crs)
+            throws IOException {
+        if (outDir == null) throw new IllegalArgumentException("outDir must not be null");
+        if (packages == null) throw new IllegalArgumentException("packages must not be null");
+        outDir.mkdirs();
+
+        SimpleFeatureType type = buildType(crs);
+        // 文件名零填充宽度，按包数自适应（≥3 位），保证字典序与编号一致
+        int width = Math.max(3, String.valueOf(Math.max(0, packages.size() - 1)).length());
+
+        for (int pkgId = 0; pkgId < packages.size(); pkgId++) {
+            SimpleFeatureBuilder builder = new SimpleFeatureBuilder(type);
+            DefaultFeatureCollection features = new DefaultFeatureCollection();
+            addPackageFeatures(features, builder, packages.get(pkgId), pkgId);
+
+            File outShp = new File(outDir, String.format("pkg_%0" + width + "d.shp", pkgId));
+            writeCollection(outShp, type, features);
+        }
+    }
+
+    /** 把一个 FeatureCollection 写入指定 .shp（建库 → 事务写入 → 释放）。 */
+    private static void writeCollection(File outShp, SimpleFeatureType type, DefaultFeatureCollection features)
+            throws IOException {
         ShapefileDataStore store = createStore(outShp, type);
         try {
-            DefaultFeatureCollection features = buildFeatures(type, packages);
-
             String typeName = store.getTypeNames()[0];
             SimpleFeatureSource source = store.getFeatureSource(typeName);
             if (!(source instanceof SimpleFeatureStore featureStore)) {
@@ -109,23 +146,20 @@ public class ShapefileWriter {
         return store;
     }
 
-    /** 把每个包内的每个 Plot 转成 Feature，pkg_id = 包在列表中的下标。 */
-    private static DefaultFeatureCollection buildFeatures(SimpleFeatureType type, List<List<Plot>> packages) {
-        DefaultFeatureCollection collection = new DefaultFeatureCollection();
-        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(type);
-
-        for (int pkgId = 0; pkgId < packages.size(); pkgId++) {
-            for (Plot plot : packages.get(pkgId)) {
-                builder.add(toMultiPolygon(plot.geometry()));
-                builder.add(plot.id());
-                builder.add(plot.villageName());
-                builder.add(pkgId);
-                // featureId 用 plot_id 保证唯一
-                SimpleFeature feature = builder.buildFeature("plot." + plot.id());
-                collection.add(feature);
-            }
+    /** 把一个包内的每个 Plot 转成 Feature 追加到 collection；pkg_id 由调用方给定。 */
+    private static void addPackageFeatures(DefaultFeatureCollection collection,
+                                           SimpleFeatureBuilder builder,
+                                           List<Plot> plots,
+                                           int pkgId) {
+        for (Plot plot : plots) {
+            builder.add(toMultiPolygon(plot.geometry()));
+            builder.add(plot.id());
+            builder.add(plot.villageName());
+            builder.add(pkgId);
+            // featureId 用 plot_id 保证唯一
+            SimpleFeature feature = builder.buildFeature("plot." + plot.id());
+            collection.add(feature);
         }
-        return collection;
     }
 
     /** Shapefile 的面类型统一为 MultiPolygon；单 Polygon 包一层。 */
