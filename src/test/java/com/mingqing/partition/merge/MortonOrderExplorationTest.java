@@ -25,8 +25,8 @@ class MortonOrderExplorationTest {
         System.out.println("=== ① spreadBits：把位拉开插 0 ===");
         for (int v = 0; v < n; v++) {
             System.out.printf("spreadBits(%d): %2d -> %d  (bin %s -> %s)%n",
-                    v, v, MortonMerger.spreadBits(v),
-                    bin(v, 2), bin(MortonMerger.spreadBits(v), 4));
+                    v, v, MortonOrder.spreadBits(v),
+                    bin(v, 2), bin(MortonOrder.spreadBits(v), 4));
         }
 
         // ── 第②段：morton 交错 x、y ─────────────────────────────────────
@@ -35,7 +35,7 @@ class MortonOrderExplorationTest {
         List<int[]> points = new ArrayList<>();
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
-                long code = MortonMerger.morton(x, y);
+                long code = MortonOrder.morton(x, y);
                 points.add(new int[]{x, y, (int) code});
                 System.out.printf("(x=%d,y=%d)  morton=%2d  bin=%s%n",
                         x, y, code, bin(code, 4));

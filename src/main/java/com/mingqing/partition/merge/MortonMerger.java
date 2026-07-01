@@ -1,19 +1,17 @@
 package com.mingqing.partition.merge;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * 基于 Morton（Z-order）空间填充曲线的合并器。
  * <p>
- * 思路：把每个簇的二维坐标量化后位交错成一个一维 Morton 码，按码排序，
- * 使「二维上邻近」转成「一维上相邻」；随后沿一维顺序贪心装箱。
+ * 排序用 {@link MortonOrder}（紧凑度），装箱用 balanced-target（均衡）：
+ * 沿一维顺序、达到摊平目标 target 即封箱。
  * <p>
- * 优：局部性好、<b>无距离阈值/无网格尺寸等参数</b>、O(n log n)、可扩展，
- * 是 GIS / 空间数据库分片的通用做法。
- * 劣：概念较重（位交错）；Morton 在 2×2 块切换处有对角跳变（Hilbert 更优
- * 但实现更复杂）；当前装箱为「贪心填满」，最后一包可能偏小。
+ * 优：局部性好、<b>无距离阈值/无网格尺寸等参数</b>、O(n log n)、可扩展。
+ * 劣：装箱不跨顺序搬运，接近上限的大簇会孤立邻近小簇 → 尾部欠装包
+ *（若要消化孤儿见 {@link LocalBestFitMortonMerger}）。
  */
 public class MortonMerger implements SpatialMerger {
 
@@ -27,19 +25,38 @@ public class MortonMerger implements SpatialMerger {
                         "cluster size " + c.size() + " exceeds capacity " + capacity);
             }
         }
-        List<Cluster> ordered = sortByLocality(clusters);
-        return sequentialPack(ordered, capacity);
+        List<Cluster> ordered = MortonOrder.sort(clusters);
+        int target = balancedTarget(clusters, capacity);
+        return balancedPack(ordered, capacity, target);
     }
 
     /**
-     * 沿已排序顺序贪心装箱：累加直到再加一个簇会超 capacity 就封箱另起。
-     * 前提：单个簇本身已 ≤ capacity（由切分阶段保证）。
+     * 均衡目标包大小：先按硬上限定出最少包数 k=⌈total/capacity⌉，
+     * 再把总量摊平到 k 个包，target=⌈total/k⌉（恒 ≤ capacity）。
+     * 让各包奔着 target 而非顶满 capacity，slack 被均匀分摊而非堆在尾部。
      */
-    private static List<List<Integer>> sequentialPack(List<Cluster> ordered, int capacity) {
+    private static int balancedTarget(List<Cluster> clusters, int capacity) {
+        int total = clusters.stream().mapToInt(Cluster::size).sum();
+        if (total == 0) return capacity;
+        int k = (int) Math.ceil((double) total / capacity);
+        return (int) Math.ceil((double) total / k);
+    }
+
+    /**
+     * 沿已排序顺序的均衡装箱：达到软目标 target 即封箱，但绝不破硬上限 capacity。
+     * 排序顺序不变 → 紧凑度不受影响，只把封箱点提前并摊匀。
+     * 前提：单个簇本身已 ≤ capacity（由切分阶段保证）。
+     * <p>
+     * 注：真实四川数据上聚合 std 无明显改善（大连通分量当"路障"主导不均衡），
+     * 但在簇尺寸更小/更均匀时生效，且避免尾部出现过小包。
+     */
+    private static List<List<Integer>> balancedPack(List<Cluster> ordered, int capacity, int target) {
         List<List<Integer>> bins = new ArrayList<>();
         List<Integer> current = new ArrayList<>();
         for (Cluster c : ordered) {
-            if (!current.isEmpty() && current.size() + c.size() > capacity) {
+            boolean overCapacity = current.size() + c.size() > capacity; // 硬上限：绝不可破
+            boolean reachedTarget = current.size() >= target;            // 软目标：够了就封
+            if (!current.isEmpty() && (overCapacity || reachedTarget)) {
                 bins.add(current);
                 current = new ArrayList<>();
             }
@@ -47,48 +64,5 @@ public class MortonMerger implements SpatialMerger {
         }
         if (!current.isEmpty()) bins.add(current);
         return bins;
-    }
-
-    /** 按 Morton 码排序，把二维邻近转成一维相邻。 */
-    private static List<Cluster> sortByLocality(List<Cluster> clusters) {
-        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
-        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
-        for (Cluster c : clusters) {
-            minX = Math.min(minX, c.x());
-            minY = Math.min(minY, c.y());
-            maxX = Math.max(maxX, c.x());
-            maxY = Math.max(maxY, c.y());
-        }
-        double spanX = maxX - minX, spanY = maxY - minY;
-        double fMinX = minX, fMinY = minY;
-
-        List<Cluster> sorted = new ArrayList<>(clusters);
-        sorted.sort(Comparator.comparingLong(c -> {
-            int qx = quantize(c.x(), fMinX, spanX);
-            int qy = quantize(c.y(), fMinY, spanY);
-            return morton(qx, qy);
-        }));
-        return sorted;
-    }
-
-    /** 把坐标归一化量化到 16-bit 整数网格 [0, 65535]。 */
-    private static int quantize(double value, double min, double span) {
-        if (span <= 0) return 0;
-        return (int) ((value - min) / span * 0xFFFF);
-    }
-
-    /** 交错 x、y 的低 16 位生成 32-bit Morton 码。包级可见以便探索测试直接调用。 */
-    static long morton(int x, int y) {
-        return spreadBits(x) | (spreadBits(y) << 1);
-    }
-
-    /** 把 16-bit 值的每一位散开到偶数位（位间插 0）。包级可见以便探索测试直接调用。 */
-    static long spreadBits(int v) {
-        long x = v & 0xFFFFL;
-        x = (x | (x << 8)) & 0x00FF00FFL;
-        x = (x | (x << 4)) & 0x0F0F0F0FL;
-        x = (x | (x << 2)) & 0x33333333L;
-        x = (x | (x << 1)) & 0x55555555L;
-        return x;
     }
 }

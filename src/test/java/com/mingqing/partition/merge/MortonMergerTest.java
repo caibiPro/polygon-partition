@@ -59,6 +59,24 @@ class MortonMergerTest {
     }
 
     /**
+     * 均衡装箱：10 个 size-1 簇、capacity=6。
+     * 贪心填满会得 [6,4]（slack 堆在尾部）；均衡目标 target=⌈10/⌈10/6⌉⌉=5
+     * 应得 [5,5]——同样 2 个包，但大小摊平，组间差从 2 降到 0。
+     */
+    @Test
+    void balancedPacking_spreadsSlackEvenly() {
+        List<Cluster> clusters = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            clusters.add(new Cluster(List.of(i), i, 0)); // 沿 x 轴排开，保证顺序确定
+        }
+
+        List<List<Integer>> bins = merger.merge(clusters, 6);
+
+        assertThat(bins).hasSize(2);
+        assertThat(bins).allMatch(b -> b.size() == 5);
+    }
+
+    /**
      * 回归测试：守住 spreadBits/morton 用 64 位 long 的设计（对全局顺序敏感）。
      * <p>
      * 沿 y 轴排 6 个单点（x=0），量程被 quantize 拉满，使高 y 越过 bit15 边界。
