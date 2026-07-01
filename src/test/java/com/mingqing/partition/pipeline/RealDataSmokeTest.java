@@ -8,6 +8,7 @@ import com.mingqing.partition.geometry.QCReport;
 import com.mingqing.partition.io.ShapefileReader;
 import com.mingqing.partition.mapper.PlotMapper;
 import com.mingqing.partition.mapper.SichuanPlotMapper;
+import com.mingqing.partition.merge.LocalBestFitMortonMerger;
 import com.mingqing.partition.merge.MortonMerger;
 import com.mingqing.partition.merge.SortSweepMerger;
 import com.mingqing.partition.merge.SpatialMerger;
@@ -65,6 +66,9 @@ class RealDataSmokeTest {
         System.out.println("\n=== Step 4: VillagePartitioner（maxGroupSize=" + MAX_GROUP_SIZE + "）===");
         evaluate("Morton", new MortonMerger(), plotsByVillage);
         evaluate("SortSweep", new SortSweepMerger(), plotsByVillage);
+        evaluate("LocalBestFit(w=32)", new LocalBestFitMortonMerger(32), plotsByVillage);
+        evaluate("LocalBestFit(w=64)", new LocalBestFitMortonMerger(64), plotsByVillage);
+        evaluate("LocalBestFit(w=128)", new LocalBestFitMortonMerger(128), plotsByVillage);
 
         // === Step 5: 每个任务包导出一个独立 Shapefile ===
         System.out.println("\n=== Step 5: 导出 Shapefile（每包一个文件）===");
@@ -145,6 +149,14 @@ class RealDataSmokeTest {
         System.out.printf("  容量上限 ≤%d: %s%n", MAX_GROUP_SIZE, capacityOk ? "OK" : "FAIL");
         System.out.printf("  包大小: min=%d max=%d mean=%.1f std=%.1f (max-min=%d)%n",
                 min, max, mean, std, max - min);
+        // 大小直方图（每 50 一桶），看分布是否双峰（大量接近上限 + 少量过小）
+        int[] hist = new int[MAX_GROUP_SIZE / 50 + 1];
+        for (int s : sizes) hist[Math.min(s / 50, hist.length - 1)]++;
+        StringBuilder bar = new StringBuilder("  直方图(每50): ");
+        for (int b = 0; b < hist.length; b++) {
+            if (hist[b] > 0) bar.append(String.format("[%d-%d]=%d ", b * 50, b * 50 + 49, hist[b]));
+        }
+        System.out.println(bar);
         System.out.printf("  平均紧凑度: %.6f (度，越小越紧凑)%n", compactness);
     }
 
