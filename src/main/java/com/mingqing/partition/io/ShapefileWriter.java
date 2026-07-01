@@ -69,6 +69,10 @@ public class ShapefileWriter {
      * 每个任务包写出一个独立 Shapefile：{@code pkg_000.shp}、{@code pkg_001.shp}……
      * 文件内保留该包的每个图斑（多 feature，各自边界）。外业人员一人领一个文件。
      *
+     * <p>写出前会清理目录里上一次运行留下的同模式产物（{@code pkg_<编号>.*}），
+     * 避免"上次包数更多"残留的高编号文件成为孤儿，污染目录和回读校验。
+     * createSchema 只能按文件名覆盖同名文件，管不到多出来的旧文件。</p>
+     *
      * @param outDir   输出目录（不存在会创建）
      * @param packages 任务包列表，下标即文件编号
      * @param crs      坐标参考系
@@ -79,6 +83,7 @@ public class ShapefileWriter {
         if (outDir == null) throw new IllegalArgumentException("outDir must not be null");
         if (packages == null) throw new IllegalArgumentException("packages must not be null");
         outDir.mkdirs();
+        cleanStalePackageFiles(outDir);
 
         SimpleFeatureType type = buildType(crs);
         // 文件名零填充宽度，按包数自适应（≥3 位），保证字典序与编号一致
@@ -91,6 +96,21 @@ public class ShapefileWriter {
 
             File outShp = new File(outDir, String.format("pkg_%0" + width + "d.shp", pkgId));
             writeCollection(outShp, type, features);
+        }
+    }
+
+    /**
+     * 删除目录里上一次运行产生的 {@code pkg_<编号>.*} 伴生文件
+     * （.shp/.shx/.dbf/.prj/.fix/.qix/.cpg）。
+     * 只匹配"pkg_数字.扩展名"，不会误删用户放进来的其它文件。
+     */
+    private static void cleanStalePackageFiles(File outDir) throws IOException {
+        File[] stale = outDir.listFiles((dir, name) -> name.matches("pkg_\\d+\\..+"));
+        if (stale == null) return;
+        for (File f : stale) {
+            if (!f.delete()) {
+                throw new IOException("无法删除残留文件：" + f.getAbsolutePath());
+            }
         }
     }
 
